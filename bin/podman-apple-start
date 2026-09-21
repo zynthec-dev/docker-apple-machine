@@ -1,0 +1,49 @@
+#!/bin/zsh
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+machine_name="${PODMAN_APPLE_MACHINE:-podman-apple-backend}"
+connection_name="${PODMAN_APPLE_CONNECTION:-apple-container}"
+identity_path="${PODMAN_APPLE_IDENTITY:-${HOME}/.config/containers/podman-apple/id_ed25519}"
+
+if ! container system status 2>/dev/null | /usr/bin/grep -Eq '^status[[:space:]]+running$'; then
+  container system start >/dev/null
+fi
+
+# Apple container 1.4.1 can leave the runtime process behind after a machine
+# reaches the stopped state. That stale process keeps the .machine hostname
+# reserved and prevents the same machine from booting again.
+machine_json="$(container machine inspect "${machine_name}" 2>/dev/null || true)"
+machine_state="$(/usr/bin/plutil -extract 0.status raw -o - -- - <<<"${machine_json}" 2>/dev/null || true)"
+if [[ "${machine_state}" == "stopped" ]]; then
+  stale_pids="$(pgrep -f "container-runtime-linux start --root .*/containers/${machine_name}-" || true)"
+  if [[ -n "${stale_pids}" ]]; then
+    kill -TERM ${(f)stale_pids}
+    sleep 2
+  fi
+fi
+
+for attempt in {1..30}; do
+  machine_ready=false
+  if container machine run -n "${machine_name}" --root systemctl is-active sshd.service >/dev/null 2>&1; then
+    machine_ready=true
+  fi
+
+  machine_json="$(container machine inspect "${machine_name}" 2>/dev/null || true)"
+  machine_ip="$(/usr/bin/plutil -extract 0.ipAddress raw -o - -- - <<<"${machine_json}" 2>/dev/null || true)"
+
+  if [[ "${machine_ready}" == true && -n "${machine_ip}" ]]; then
+    podman system connection remove "${connection_name}" >/dev/null 2>&1 || true
+    podman system connection add --default \
+      --identity "${identity_path}" \
+      --socket-path /run/podman/podman.sock \
+      "${connection_name}" "ssh://root@${machine_ip}" >/dev/null
+    exit 0
+  fi
+
+  sleep 2
+done
+
+print -u2 "${machine_name} did not become ready within 60 seconds."
+exit 1
