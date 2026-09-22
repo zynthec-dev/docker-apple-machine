@@ -1,4 +1,4 @@
-name: Build and publish Podman Apple backend
+name: Build and publish Podman Apple Machine
 
 on:
   push:
@@ -35,9 +35,9 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/podman-apple-backend:latest
-            ghcr.io/${{ github.repository_owner }}/podman-apple-backend:rootful
-            ghcr.io/${{ github.repository_owner }}/podman-apple-backend:rootful-${{ github.run_number }}
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:rootful
+            ghcr.io/${{ github.repository }}:rootful-${{ github.run_number }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -50,8 +50,8 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/podman-apple-backend:rootless
-            ghcr.io/${{ github.repository_owner }}/podman-apple-backend:rootless-${{ github.run_number }}
+            ghcr.io/${{ github.repository }}:rootless
+            ghcr.io/${{ github.repository }}:rootless-${{ github.run_number }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

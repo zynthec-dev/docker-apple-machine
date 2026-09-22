@@ -1,4 +1,4 @@
-# Podman backend on Apple Container
+# Podman Apple Machine
 
 These images turn Apple `container machine` instances into persistent Podman
 backends. The macOS Homebrew Podman CLI connects through SSH; the Podman API is
@@ -6,9 +6,9 @@ never exposed as an unauthenticated TCP service.
 
 Published variants:
 
-- `ghcr.io/zynthec-dev/podman-apple-backend:rootful` and `:latest`: root user,
+- `ghcr.io/zynthec-dev/podman-apple-machine:rootful` and `:latest`: root user,
   system socket `/run/podman/podman.sock`.
-- `ghcr.io/zynthec-dev/podman-apple-backend:rootless`: `podman` user, user
+- `ghcr.io/zynthec-dev/podman-apple-machine:rootless`: `podman` user, user
   socket `/run/user/1000/podman/podman.sock`, subordinate IDs starting at
   100000.
 

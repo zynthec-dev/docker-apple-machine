@@ -1,8 +1,8 @@
 FROM docker.io/library/fedora:rawhide AS base
 
-LABEL org.opencontainers.image.title="Podman backend for Apple Container machines" \
+LABEL org.opencontainers.image.title="Podman Apple Machine" \
       org.opencontainers.image.description="Podman API backend secured with SSH for Apple container machine" \
-      org.opencontainers.image.source="https://github.com/zynthec-dev/podman-apple-container-machine"
+      org.opencontainers.image.source="https://github.com/zynthec-dev/podman-apple-machine"
 
 RUN dnf -y upgrade --refresh \
     && dnf -y install \
