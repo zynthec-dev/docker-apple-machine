@@ -1,0 +1,58 @@
+#!/bin/zsh
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+mode="${1:-rootful}"
+if [[ "${mode}" != "rootful" && "${mode}" != "rootless" ]]; then
+  print -u2 "Usage: $0 [rootful|rootless]"
+  exit 64
+fi
+
+repo_dir="${0:A:h:h}"
+machine_name="${DOCKER_APPLE_MACHINE:-docker-apple-machine}"
+image="${DOCKER_APPLE_IMAGE:-ghcr.io/zynthec-dev/docker-apple-machine:${mode}}"
+identity_path="${DOCKER_APPLE_IDENTITY:-${HOME}/.config/docker/apple-machine/id_ed25519}"
+
+if container machine inspect "${machine_name}" >/dev/null 2>&1; then
+  print -u2 "Machine ${machine_name} already exists; refusing to overwrite it."
+  exit 1
+fi
+
+install -d -m 0700 "${identity_path:h}"
+if [[ ! -f "${identity_path}" ]]; then
+  ssh-keygen -q -t ed25519 -N '' -C docker-apple-machine -f "${identity_path}"
+fi
+
+container image inspect "${image}" >/dev/null 2>&1 || container image pull "${image}"
+container machine create --name "${machine_name}" --cpus 4 --memory 6G --home-mount none "${image}"
+for attempt in {1..10}; do
+  if container machine run -n "${machine_name}" --root /usr/bin/uname -a >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "${attempt}" == 10 ]]; then
+    print -u2 "Machine ${machine_name} could not be booted."
+    exit 1
+  fi
+  sleep 2
+done
+
+if [[ "${mode}" == "rootful" ]]; then
+  ssh_home=/root
+  ssh_uid=0
+  ssh_gid=0
+else
+  ssh_home=/home/docker
+  ssh_uid=1000
+  ssh_gid=1000
+fi
+
+container machine run -n "${machine_name}" --root install -d -m 0700 -o "${ssh_uid}" -g "${ssh_gid}" "${ssh_home}/.ssh"
+cat "${identity_path}.pub" | container machine run -n "${machine_name}" -i --root tee "${ssh_home}/.ssh/authorized_keys" >/dev/null
+container machine run -n "${machine_name}" --root chown "${ssh_uid}:${ssh_gid}" "${ssh_home}/.ssh/authorized_keys"
+container machine run -n "${machine_name}" --root chmod 0600 "${ssh_home}/.ssh/authorized_keys"
+
+DOCKER_APPLE_MODE="${mode}" "${repo_dir}/bin/docker-apple-start"
+"${repo_dir}/bin/install-launch-agent" "${mode}"
+
+docker --context "${DOCKER_APPLE_CONTEXT:-apple-machine}" run --rm docker.io/library/alpine:latest echo "docker-${mode}-ok"

@@ -1,0 +1,85 @@
+#!/bin/zsh
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+machine_name="${DOCKER_APPLE_MACHINE:-docker-apple-machine}"
+context_name="${DOCKER_APPLE_CONTEXT:-apple-machine}"
+mode="${DOCKER_APPLE_MODE:-rootful}"
+identity_path="${DOCKER_APPLE_IDENTITY:-${HOME}/.config/docker/apple-machine/id_ed25519}"
+ssh_alias="${DOCKER_APPLE_SSH_ALIAS:-docker-apple-machine}"
+
+if [[ "${mode}" != "rootful" && "${mode}" != "rootless" ]]; then
+  print -u2 "DOCKER_APPLE_MODE must be rootful or rootless."
+  exit 64
+fi
+
+if ! container system status 2>/dev/null | /usr/bin/grep -Eq '^status[[:space:]]+running$'; then
+  container system start >/dev/null
+fi
+
+# Apple container 1.4.1 can leave a stopped machine's runtime process behind.
+machine_json="$(container machine inspect "${machine_name}" 2>/dev/null || true)"
+machine_state="$(/usr/bin/plutil -extract 0.status raw -o - -- - <<<"${machine_json}" 2>/dev/null || true)"
+if [[ "${machine_state}" == "stopped" ]]; then
+  stale_pids="$(pgrep -f "container-runtime-linux start --root .*/containers/${machine_name}-" || true)"
+  if [[ -n "${stale_pids}" ]]; then
+    kill -TERM ${(f)stale_pids}
+    sleep 2
+  fi
+fi
+
+for attempt in {1..30}; do
+  machine_ready=false
+  if container machine run -n "${machine_name}" --root systemctl is-active sshd.service >/dev/null 2>&1; then
+    if [[ "${mode}" == "rootful" ]]; then
+      container machine run -n "${machine_name}" --root systemctl is-active docker.service >/dev/null 2>&1 && machine_ready=true
+    else
+      container machine run -n "${machine_name}" --root test -S /run/user/1000/docker.sock >/dev/null 2>&1 && machine_ready=true
+    fi
+  fi
+
+  machine_json="$(container machine inspect "${machine_name}" 2>/dev/null || true)"
+  machine_ip="$(/usr/bin/plutil -extract 0.ipAddress raw -o - -- - <<<"${machine_json}" 2>/dev/null || true)"
+
+  if [[ "${machine_ready}" == true && -n "${machine_ip}" ]]; then
+    ssh_user=root
+    docker_host="ssh://${ssh_alias}"
+    if [[ "${mode}" == "rootless" ]]; then
+      ssh_user=docker
+      docker_host="ssh://${ssh_alias}/run/user/1000/docker.sock"
+    fi
+
+    install -d -m 0700 "${HOME}/.ssh" "${HOME}/.ssh/config.d"
+    ssh_config="${HOME}/.ssh/config.d/docker-apple-machine"
+    {
+      print "Host ${ssh_alias}"
+      print "  HostName ${machine_ip}"
+      print "  User ${ssh_user}"
+      print "  IdentityFile ${identity_path}"
+      print "  IdentitiesOnly yes"
+      print "  StrictHostKeyChecking accept-new"
+      print "  ControlMaster auto"
+      print "  ControlPath ~/.ssh/docker-apple-%C"
+      print "  ControlPersist 60"
+    } > "${ssh_config}"
+    chmod 0600 "${ssh_config}"
+
+    touch "${HOME}/.ssh/config"
+    chmod 0600 "${HOME}/.ssh/config"
+    if ! /usr/bin/grep -Fqx 'Include ~/.ssh/config.d/*' "${HOME}/.ssh/config"; then
+      print 'Include ~/.ssh/config.d/*' >> "${HOME}/.ssh/config"
+    fi
+
+    docker context inspect "${context_name}" >/dev/null 2>&1 && docker context rm -f "${context_name}" >/dev/null
+    docker context create --docker "host=${docker_host}" --description "Docker Engine on Apple container machine (${mode})" "${context_name}" >/dev/null
+    docker context use "${context_name}" >/dev/null
+    docker --context "${context_name}" info >/dev/null
+    exit 0
+  fi
+
+  sleep 2
+done
+
+print -u2 "${machine_name} did not become ready within 60 seconds."
+exit 1

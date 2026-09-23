@@ -3,11 +3,16 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.zynthec.podman-apple-backend</string>
+  <string>com.zynthec.docker-apple-machine</string>
   <key>ProgramArguments</key>
   <array>
     <string>__PROGRAM__</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DOCKER_APPLE_MODE</key>
+    <string>__MODE__</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>

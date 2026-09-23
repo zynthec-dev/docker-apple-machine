@@ -1,18 +1,25 @@
 #!/bin/zsh
 set -euo pipefail
 
+mode="${1:-rootful}"
+if [[ "${mode}" != "rootful" && "${mode}" != "rootless" ]]; then
+  print -u2 "Usage: $0 [rootful|rootless]"
+  exit 64
+fi
+
 repo_dir="${0:A:h:h}"
-install_dir="${HOME}/.local/libexec/podman-apple-backend"
+install_dir="${HOME}/.local/libexec/docker-apple-machine"
 agent_dir="${HOME}/Library/LaunchAgents"
-log_dir="${HOME}/Library/Logs/podman-apple-backend"
-agent_label="com.zynthec.podman-apple-backend"
+log_dir="${HOME}/Library/Logs/docker-apple-machine"
+agent_label="com.zynthec.docker-apple-machine"
 agent_file="${agent_dir}/${agent_label}.plist"
 
 install -d -m 0755 "${install_dir}" "${agent_dir}" "${log_dir}"
-install -m 0755 "${repo_dir}/bin/podman-apple-start" "${install_dir}/podman-apple-start"
+install -m 0755 "${repo_dir}/bin/docker-apple-start" "${install_dir}/docker-apple-start"
 
 sed \
-  -e "s|__PROGRAM__|${install_dir}/podman-apple-start|g" \
+  -e "s|__PROGRAM__|${install_dir}/docker-apple-start|g" \
+  -e "s|__MODE__|${mode}|g" \
   -e "s|__STDOUT__|${log_dir}/stdout.log|g" \
   -e "s|__STDERR__|${log_dir}/stderr.log|g" \
   "${repo_dir}/launchd/${agent_label}.plist.in" > "${agent_file}"
@@ -21,4 +28,4 @@ launchctl bootout "gui/${UID}/${agent_label}" 2>/dev/null || true
 launchctl bootstrap "gui/${UID}" "${agent_file}"
 launchctl kickstart -k "gui/${UID}/${agent_label}"
 
-echo "Installed and started ${agent_label}."
+echo "Installed and started ${agent_label} in ${mode} mode."
